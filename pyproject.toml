@@ -1,0 +1,55 @@
+[project]
+name = "birminghack-bot"
+version = "0.1.0"
+description = "Discord bot used for birmingHack verification"
+readme = "README.md"
+requires-python = "==3.13.*"
+authors = [ { name = "CSSUoB" } ]
+license = { text = "MIT" }
+keywords = ["discord", "bot", "birminghack"]
+homepage = "https://github.com/CSSUoB/birminghack-bot"
+
+[dependency-groups]
+main = [
+    "py-cord==2.6.1",
+    "requests==2.32.3",
+    "strictyaml==1.7.3",
+]
+dev = [
+    "mypy>=1.18.2",
+    "ruff>=0.12",
+]
+
+[tool.mypy]
+check_untyped_defs = true
+disallow_any_decorated = true
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_any_unimported = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+enable_error_code = [
+    "deprecated",
+    "explicit-override",
+    "ignore-without-code",
+    "mutable-override",
+    "narrowed-type-not-subtype",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unused-awaitable",
+]
+extra_checks = true
+mypy_path = "stubs"
+no_implicit_reexport = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+warn_unused_ignores = true
