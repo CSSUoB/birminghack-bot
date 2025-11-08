@@ -7,7 +7,6 @@ requires-python = "==3.13.*"
 authors = [ { name = "CSSUoB" } ]
 license = { text = "MIT" }
 keywords = ["discord", "bot", "birminghack"]
-homepage = "https://github.com/CSSUoB/birminghack-bot"
 
 [dependency-groups]
 main = [
