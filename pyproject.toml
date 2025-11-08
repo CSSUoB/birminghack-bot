@@ -58,3 +58,7 @@ warn_unused_ignores = true
 
 [tool.uv]
 default-groups = ["dev", "main"]
+
+[tool.ruff.lint.per-file-ignores]
+"stubs/discord/**/*.pyi" = ["F403"]
+"stubs/discord/commands/__init__.pyi" = ["F405"]

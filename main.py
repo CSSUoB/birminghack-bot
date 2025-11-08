@@ -3,6 +3,8 @@ import logging
 from yaml import safe_load
 import requests
 import sys
+from discord.ui import View
+
 
 with open("config.yaml", "r") as config_file:
     config = safe_load(config_file)
@@ -34,7 +36,7 @@ def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     return dict(tickets[0])
 
 
-class VerifyView(discord.ui.View):
+class VerifyView(View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
@@ -42,7 +44,7 @@ class VerifyView(discord.ui.View):
         label="Get Access", custom_id="btn-access", style=discord.ButtonStyle.success
     )
     async def button_callback(  # type: ignore[misc]
-        self: discord.ui.View, button: discord.Button, interaction: discord.Interaction
+        self: View, button: discord.Button, interaction: discord.Interaction
     ) -> None:
         if not interaction.user:
             return
@@ -50,53 +52,56 @@ class VerifyView(discord.ui.View):
         user_id: int = interaction.user.id
 
         async def grant_access() -> discord.Embed:
-            embed = discord.Embed(
-                description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
-                color=discord.Colour.red(),
-            )
-
             try:
                 ticket: dict[str, str] | None = get_ticket_from_discord_tag(
                     discordtag=user
                 )
                 if ticket is None:
-                    pass
-                else:
-                    first_name: str = ticket["ticket_name"].split(" ")[0]
-                    ref: str = ticket["ticket_reference"]
-                    guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
-                    member: discord.Member = await guild.fetch_member(user_id)
-                    role_id: int = int(config["role-id"])
-
-                    if member.get_role(role_id) != None:
-                        return discord.Embed(
-                            description="You have already been verified!",
-                            color=discord.Colour.red(),
-                        )
-                    role: discord.Role | None = guild.get_role(role_id)
-
-                    if not role:
-                        return discord.Embed(
-                            description="Verification role not found. Please contact an organiser.",
-                            color=discord.Colour.red(),
-                        )
-
-                    await member.add_roles(role)
-
-                    logger.info(
-                        f"Discord account {user} ({user_id}) linked to ticket {ref}"
-                    )
-
-                    await member.edit(nick=first_name)
-
                     return discord.Embed(
-                        description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
-                        color=discord.Colour.green(),
+                        description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
+                        color=discord.Colour.red(),
                     )
-            except Exception:
-                logger.exception(f"Error while verifying {user}")
 
-            return embed
+                first_name: str = ticket["ticket_name"].split(" ")[0]
+                ref: str = ticket["ticket_reference"]
+                guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
+                member: discord.Member = await guild.fetch_member(user_id)
+                role_id: int = int(config["role-id"])
+
+                if member.get_role(role_id) is not None:
+                    return discord.Embed(
+                        description="You have already been verified!",
+                        color=discord.Colour.red(),
+                    )
+
+                role: discord.Role | None = guild.get_role(role_id)
+
+                if not role:
+                    return discord.Embed(
+                        description="Verification role not found. Please contact an organiser.",
+                        color=discord.Colour.red(),
+                    )
+
+                await member.add_roles(role)
+
+                logger.info(
+                    f"Discord account {user} ({user_id}) linked to ticket {ref}"
+                )
+
+                await member.edit(nick=first_name)
+
+                return discord.Embed(
+                    description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
+                    color=discord.Colour.green(),
+                )
+            except Exception as exception:
+                logger.exception(f"Error while verifying {user}")
+                logger.debug(exception.with_traceback(sys.exc_info()[2]))
+                logger.debug(str(exception))
+                return discord.Embed(
+                    description="An unexpected error occurred while trying to verify you. Please let an organiser know.",
+                    color=discord.Colour.red(),
+                )
 
         await interaction.response.send_message(
             embed=await grant_access(), ephemeral=True
@@ -116,7 +121,9 @@ async def on_ready() -> None:
 async def send_verification_button(ctx: discord.ApplicationContext) -> None:  # type: ignore[misc]
     channel = await bot.fetch_channel(config["verification-channel-id"])
     if not (isinstance(channel, discord.TextChannel)):
-        await ctx.respond("The specified channel is not a text channel.", ephemeral=True)
+        await ctx.respond(
+            "The specified channel is not a text channel.", ephemeral=True
+        )
         return
     embed = discord.Embed(
         title="Access",
