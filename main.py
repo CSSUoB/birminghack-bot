@@ -57,6 +57,7 @@ class VerifyView(View):
                     discordtag=user
                 )
                 if ticket is None:
+                    logger.warning("Failed to verify user %s (%d) because no ticket data was returned", user, user_id)
                     return discord.Embed(
                         description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
                         color=discord.Colour.red(),
@@ -69,6 +70,7 @@ class VerifyView(View):
                 role_id: int = int(config["role-id"])
 
                 if member.get_role(role_id) is not None:
+                    logger.debug("User %s already has role %d", user, role_id)
                     return discord.Embed(
                         description="You have already been verified!",
                         color=discord.Colour.red(),
@@ -77,6 +79,8 @@ class VerifyView(View):
                 role: discord.Role | None = guild.get_role(role_id)
 
                 if not role:
+                    logger.info(f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {user}")
+                    logger.debug(f"Guild roles: {guild.roles}")
                     return discord.Embed(
                         description="Verification role not found. Please contact an organiser.",
                         color=discord.Colour.red(),
