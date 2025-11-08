@@ -8,6 +8,6 @@ bot:
   token: 
 
 guild-id: 
-chan-id: 
+verification-channel-id: 
 role-id: 
 

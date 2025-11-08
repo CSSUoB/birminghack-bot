@@ -12,12 +12,14 @@ homepage = "https://github.com/CSSUoB/birminghack-bot"
 [dependency-groups]
 main = [
     "py-cord==2.6.1",
+    "pyyaml>=6.0.3",
     "requests==2.32.3",
-    "strictyaml==1.7.3",
 ]
 dev = [
     "mypy>=1.18.2",
     "ruff>=0.12",
+    "types-pyyaml>=6.0.12.20250915",
+    "types-requests>=2.32.4.20250913",
 ]
 
 [tool.mypy]
@@ -53,3 +55,6 @@ warn_return_any = true
 warn_unreachable = true
 warn_unused_configs = true
 warn_unused_ignores = true
+
+[tool.uv]
+default-groups = ["dev", "main"]
