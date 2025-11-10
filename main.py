@@ -4,20 +4,28 @@ from yaml import safe_load
 import requests
 import sys
 from discord.ui import View
+from typing import Final
+
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+
+bot = discord.Bot(intents=discord.Intents.all())  # type: ignore[no-untyped-call]
 
 
 with open("config.yaml", "r") as config_file:
     config = safe_load(config_file)
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
-bot = discord.Bot(intents=discord.Intents.all())  # type: ignore[no-untyped-call]
+account_slug: Final[str] = config["tito"]["account-slug"]
+event_slug: Final[str] = config["tito"]["event-slug"]
+question_slug: Final[str] = config["tito"]["question-slug"]
 
 
 def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     response = requests.get(
-        f"https://api.tito.io/v3/{config['tito']['account-slug']}/{config['tito']['event-slug']}/questions/{config['tito']['question-slug']}/answers",
+        f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers",
         headers={
             "Authorization": f"Token token={config['tito']['token']}",
             "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
