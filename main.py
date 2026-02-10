@@ -30,7 +30,7 @@ api_endpoint: Final[str] = (
 
 def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
     for ticket in ticket_cache:
-        if ticket["response"] == discordtag:
+        if ticket["response"].strip().lower() == discordtag.strip().lower():
             return dict(ticket)
     return None
 
@@ -50,7 +50,7 @@ def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     data = response.json()
     ticket_cache.clear()
     ticket_cache.extend(data["answers"])
-    tickets = [ticket for ticket in data["answers"] if ticket["response"] == discordtag]
+    tickets: list[dict[str, str]] = [ticket for ticket in data["answers"] if ticket["response"].strip().lower() == discordtag.strip().lower()]
 
     if not tickets:
         logger.warning("No ticket found for Discord tag %s", discordtag)
