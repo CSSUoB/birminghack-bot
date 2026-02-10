@@ -1,11 +1,11 @@
 import discord
 import logging
 from yaml import safe_load
-import requests
 import sys
 import aiohttp
 from discord.ui import View
 from typing import Final, Optional
+from discord_logging.handler import DiscordHandler
 
 
 logger = logging.getLogger()
@@ -206,5 +206,12 @@ if __name__ == "__main__":
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+    discord_logging_handler: logging.Handler = DiscordHandler(
+        service_name="biringBot",
+        webhook_url=config["discord-log-channel-webhook"],
+    )
+
+    logger.addHandler(discord_logging_handler)
 
     bot.run(config["bot"]["token"])

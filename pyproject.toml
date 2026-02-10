@@ -14,6 +14,7 @@ main = [
     "pyyaml>=6.0.3",
     "requests==2.32.3",
     "audioop-lts; python_version > '3.12'",
+    "python-logging-discord-handler>=0.1.5",
 ]
 dev = [
     "mypy>=1.18.2",
