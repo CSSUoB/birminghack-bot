@@ -28,6 +28,7 @@ api_endpoint: Final[str] = (
     f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers"
 )
 
+
 def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
     for ticket in ticket_cache:
         if ticket["response"].strip().lower() == discordtag.strip().lower():
@@ -36,7 +37,7 @@ def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
 
 
 def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
-    if (cached_ticket := check_cache_for_discord_tag(discordtag)):
+    if cached_ticket := check_cache_for_discord_tag(discordtag):
         logger.debug("Cache hit for Discord tag %s", discordtag)
         return cached_ticket
 
@@ -50,12 +51,16 @@ def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     data = response.json()
     ticket_cache.clear()
     ticket_cache.extend(data["answers"])
-    tickets: list[dict[str, str]] = [ticket for ticket in data["answers"] if ticket["response"].strip().lower() == discordtag.strip().lower()]
+    tickets: list[dict[str, str]] = [
+        ticket
+        for ticket in data["answers"]
+        if ticket["response"].strip().lower() == discordtag.strip().lower()
+    ]
 
     if not tickets:
         logger.warning("No ticket found for Discord tag %s", discordtag)
         return None
-    
+
     logger.debug("Ticket found for Discord tag %s: %s", discordtag, tickets[0])
 
     return dict(tickets[0])
