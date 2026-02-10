@@ -82,81 +82,94 @@ class VerifyView(View):
     ) -> None:
         if not interaction.user:
             return
-        
+
         await interaction.response.defer(ephemeral=True)
 
         discord_username: str = interaction.user.name
         user_id: int = interaction.user.id
 
-        async def grant_access() -> discord.Embed:
-            try:
-                guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
-                member: discord.Member = await guild.fetch_member(user_id)
-                role_id: int = int(config["role-id"])
+        guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
+        member: discord.Member = await guild.fetch_member(user_id)
+        role_id: int = int(config["role-id"])
 
-                if member.get_role(role_id) is not None:
-                    logger.debug(
-                        "User %s already has role %d", discord_username, role_id
-                    )
-                    return discord.Embed(
-                        description="You have already been verified!",
-                        color=discord.Colour.red(),
-                    )
-
-                role: discord.Role | None = guild.get_role(role_id)
-
-                if not role:
-                    logger.info(
-                        f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {discord_username}"
-                    )
-                    logger.debug(f"Guild roles: {guild.roles}")
-                    return discord.Embed(
-                        description="Verification role not found. Please contact an organiser.",
-                        color=discord.Colour.red(),
-                    )
-
-                ticket: dict[str, str] | None = await get_ticket_from_discord_tag(
-                    discordtag=discord_username
-                )
-
-                if ticket is None:
-                    logger.warning(
-                        "Failed to verify user %s (%d) because no ticket data was returned",
-                        discord_username,
-                        user_id,
-                    )
-                    return discord.Embed(
-                        description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
-                        color=discord.Colour.red(),
-                    )
-
-                first_name: str = ticket["ticket_name"].split(" ")[0]
-                ref: str = ticket["ticket_reference"]
-
-                await member.add_roles(role)
-
-                logger.info(
-                    f"Discord account {discord_username} ({user_id}) linked to ticket {ref}"
-                )
-
-                await member.edit(nick=first_name)
-
-                return discord.Embed(
-                    description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
-                    color=discord.Colour.green(),
-                )
-            except Exception as exception:
-                logger.exception(f"Error while verifying {discord_username}")
-                logger.debug(exception.with_traceback(sys.exc_info()[2]))
-                logger.debug(str(exception))
-                return discord.Embed(
-                    description="An unexpected error occurred while trying to verify you. Please let an organiser know.",
+        if member.get_role(role_id) is not None:
+            logger.debug("User %s already has role %d", discord_username, role_id)
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description="You have already been verified!",
                     color=discord.Colour.red(),
                 )
+            )
+            return
 
-        await interaction.response.send_message(
-            embed=await grant_access(), ephemeral=True
+        role: discord.Role | None = guild.get_role(role_id)
+
+        if not role:
+            logger.info(
+                f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {discord_username}"
+            )
+            logger.debug(f"Guild roles: {guild.roles}")
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description="Verification role not found. Please contact an organiser.",
+                    color=discord.Colour.red(),
+                )
+            )
+            return
+
+        ticket: dict[str, str] | None = await get_ticket_from_discord_tag(
+            discordtag=discord_username
         )
+
+        if ticket is None:
+            logger.warning(
+                "Failed to verify user %s (%d) because no ticket data was returned",
+                discord_username,
+                user_id,
+            )
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
+                    color=discord.Colour.red(),
+                )
+            )
+            return
+
+        first_name: str = ticket["ticket_name"].split(" ")[0]
+        ref: str = ticket["ticket_reference"]
+
+        try:
+            await member.add_roles(role)
+        except discord.Forbidden:
+            logger.error(
+                f"Failed to assign role to user {discord_username} ({user_id}) due to insufficient permissions"
+            )
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description="Sorry, we were unable to assign you the verified role. Please let an organiser know.",
+                    color=discord.Colour.red(),
+                )
+            )
+            return
+
+        logger.info(
+            f"Discord account {discord_username} ({user_id}) linked to ticket {ref}"
+        )
+
+        try:
+            await member.edit(nick=first_name)
+        except discord.Forbidden:
+            logger.error(
+                f"Failed to update nickname for user {discord_username} ({user_id}) due to insufficient permissions"
+            )
+
+        await interaction.followup.send(
+            embed=discord.Embed(
+                description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
+                color=discord.Colour.green(),
+            )
+        )
+        return
 
 
 @bot.event
