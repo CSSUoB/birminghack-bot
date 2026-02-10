@@ -98,7 +98,8 @@ class VerifyView(View):
                 embed=discord.Embed(
                     description="You have already been verified!",
                     color=discord.Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -113,7 +114,8 @@ class VerifyView(View):
                 embed=discord.Embed(
                     description="Verification role not found. Please contact an organiser.",
                     color=discord.Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -131,7 +133,8 @@ class VerifyView(View):
                 embed=discord.Embed(
                     description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
                     color=discord.Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -148,7 +151,8 @@ class VerifyView(View):
                 embed=discord.Embed(
                     description="Sorry, we were unable to assign you the verified role. Please let an organiser know.",
                     color=discord.Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -167,7 +171,8 @@ class VerifyView(View):
             embed=discord.Embed(
                 description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
                 color=discord.Colour.green(),
-            )
+            ),
+            ephemeral=True,
         )
         return
 
