@@ -3,6 +3,7 @@ import logging
 from yaml import safe_load
 import requests
 import sys
+import aiohttp
 from discord.ui import View
 from typing import Final, Optional
 
@@ -36,34 +37,37 @@ def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
     return None
 
 
-def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
+async def fetch_tickets_from_api() -> None:
+    async with (
+        aiohttp.ClientSession(
+            headers={
+                "Authorization": f"Token token={config['tito']['token']}",
+                "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
+            },
+        ) as http_session,
+        http_session.get(api_endpoint) as response,
+    ):
+        data = await response.json()
+        ticket_cache.clear()
+        ticket_cache.extend(data["answers"])
+
+
+async def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     if cached_ticket := check_cache_for_discord_tag(discordtag):
         logger.debug("Cache hit for Discord tag %s", discordtag)
         return cached_ticket
 
-    response = requests.get(
-        url=api_endpoint,
-        headers={
-            "Authorization": f"Token token={config['tito']['token']}",
-            "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
-        },
-    )
-    data = response.json()
-    ticket_cache.clear()
-    ticket_cache.extend(data["answers"])
-    tickets: list[dict[str, str]] = [
-        ticket
-        for ticket in data["answers"]
-        if ticket["response"].strip().lower() == discordtag.strip().lower()
-    ]
+    await fetch_tickets_from_api()
 
-    if not tickets:
+    ticket: dict[str, str] | None = check_cache_for_discord_tag(discordtag)
+
+    if not ticket:
         logger.warning("No ticket found for Discord tag %s", discordtag)
         return None
 
-    logger.debug("Ticket found for Discord tag %s: %s", discordtag, tickets[0])
+    logger.debug("Ticket found for Discord tag %s: %s", discordtag, ticket)
 
-    return dict(tickets[0])
+    return dict(ticket)
 
 
 class VerifyView(View):
@@ -78,6 +82,9 @@ class VerifyView(View):
     ) -> None:
         if not interaction.user:
             return
+        
+        await interaction.response.defer(ephemeral=True)
+
         discord_username: str = interaction.user.name
         user_id: int = interaction.user.id
 
@@ -108,7 +115,7 @@ class VerifyView(View):
                         color=discord.Colour.red(),
                     )
 
-                ticket: dict[str, str] | None = get_ticket_from_discord_tag(
+                ticket: dict[str, str] | None = await get_ticket_from_discord_tag(
                     discordtag=discord_username
                 )
 
