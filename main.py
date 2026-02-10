@@ -14,6 +14,9 @@ logger.setLevel(logging.INFO)
 bot = discord.Bot(intents=discord.Intents.all())  # type: ignore[no-untyped-call]
 
 
+ticket_cache: dict[str, str] = {}
+
+
 with open("config.yaml", "r") as config_file:
     config = safe_load(config_file)
 
@@ -21,26 +24,26 @@ with open("config.yaml", "r") as config_file:
 account_slug: Final[str] = config["tito"]["account-slug"]
 event_slug: Final[str] = config["tito"]["event-slug"]
 question_slug: Final[str] = config["tito"]["question-slug"]
+api_endpoint: Final[str] = (
+    f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers"
+)
 
 
 def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
     response = requests.get(
-        f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers",
+        url=api_endpoint,
         headers={
             "Authorization": f"Token token={config['tito']['token']}",
             "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
         },
     )
     data = response.json()
-    tickets = list(
-        filter(
-            lambda ticket: ticket["response"].lower() == discordtag
-            and len(ticket["response"]) > 2,
-            data["answers"],
-        )
-    )
-    if len(tickets) == 0:
+    tickets = [ticket for ticket in data["answers"] if ticket["response"] == discordtag]
+
+    if not tickets:
+        logger.warning("No ticket found for Discord tag %s", discordtag)
         return None
+
     return dict(tickets[0])
 
 
@@ -56,29 +59,19 @@ class VerifyView(View):
     ) -> None:
         if not interaction.user:
             return
-        user: str = interaction.user.name
+        discord_username: str = interaction.user.name
         user_id: int = interaction.user.id
 
         async def grant_access() -> discord.Embed:
             try:
-                ticket: dict[str, str] | None = get_ticket_from_discord_tag(
-                    discordtag=user
-                )
-                if ticket is None:
-                    logger.warning("Failed to verify user %s (%d) because no ticket data was returned", user, user_id)
-                    return discord.Embed(
-                        description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
-                        color=discord.Colour.red(),
-                    )
-
-                first_name: str = ticket["ticket_name"].split(" ")[0]
-                ref: str = ticket["ticket_reference"]
                 guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
                 member: discord.Member = await guild.fetch_member(user_id)
                 role_id: int = int(config["role-id"])
 
                 if member.get_role(role_id) is not None:
-                    logger.debug("User %s already has role %d", user, role_id)
+                    logger.debug(
+                        "User %s already has role %d", discord_username, role_id
+                    )
                     return discord.Embed(
                         description="You have already been verified!",
                         color=discord.Colour.red(),
@@ -87,17 +80,37 @@ class VerifyView(View):
                 role: discord.Role | None = guild.get_role(role_id)
 
                 if not role:
-                    logger.info(f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {user}")
+                    logger.info(
+                        f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {discord_username}"
+                    )
                     logger.debug(f"Guild roles: {guild.roles}")
                     return discord.Embed(
                         description="Verification role not found. Please contact an organiser.",
                         color=discord.Colour.red(),
                     )
 
+                ticket: dict[str, str] | None = get_ticket_from_discord_tag(
+                    discordtag=discord_username
+                )
+
+                if ticket is None:
+                    logger.warning(
+                        "Failed to verify user %s (%d) because no ticket data was returned",
+                        discord_username,
+                        user_id,
+                    )
+                    return discord.Embed(
+                        description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
+                        color=discord.Colour.red(),
+                    )
+
+                first_name: str = ticket["ticket_name"].split(" ")[0]
+                ref: str = ticket["ticket_reference"]
+
                 await member.add_roles(role)
 
                 logger.info(
-                    f"Discord account {user} ({user_id}) linked to ticket {ref}"
+                    f"Discord account {discord_username} ({user_id}) linked to ticket {ref}"
                 )
 
                 await member.edit(nick=first_name)
@@ -107,7 +120,7 @@ class VerifyView(View):
                     color=discord.Colour.green(),
                 )
             except Exception as exception:
-                logger.exception(f"Error while verifying {user}")
+                logger.exception(f"Error while verifying {discord_username}")
                 logger.debug(exception.with_traceback(sys.exc_info()[2]))
                 logger.debug(str(exception))
                 return discord.Embed(
