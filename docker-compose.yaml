@@ -1,0 +1,8 @@
+services:
+  birminghack-bot:
+    image: birmingbot
+    container_name: birminghack-bot
+    build:
+      context: ./
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
