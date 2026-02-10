@@ -4,7 +4,7 @@ from yaml import safe_load
 import requests
 import sys
 from discord.ui import View
-from typing import Final
+from typing import Final, Optional
 
 
 logger = logging.getLogger()
@@ -14,7 +14,7 @@ logger.setLevel(logging.INFO)
 bot = discord.Bot(intents=discord.Intents.all())  # type: ignore[no-untyped-call]
 
 
-ticket_cache: dict[str, str] = {}
+ticket_cache: list[dict[str, str]] = []
 
 
 with open("config.yaml", "r") as config_file:
@@ -28,8 +28,18 @@ api_endpoint: Final[str] = (
     f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers"
 )
 
+def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
+    for ticket in ticket_cache:
+        if ticket["response"] == discordtag:
+            return dict(ticket)
+    return None
+
 
 def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
+    if (cached_ticket := check_cache_for_discord_tag(discordtag)):
+        logger.debug("Cache hit for Discord tag %s", discordtag)
+        return cached_ticket
+
     response = requests.get(
         url=api_endpoint,
         headers={
@@ -38,11 +48,15 @@ def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
         },
     )
     data = response.json()
+    ticket_cache.clear()
+    ticket_cache.extend(data["answers"])
     tickets = [ticket for ticket in data["answers"] if ticket["response"] == discordtag]
 
     if not tickets:
         logger.warning("No ticket found for Discord tag %s", discordtag)
         return None
+    
+    logger.debug("Ticket found for Discord tag %s: %s", discordtag, tickets[0])
 
     return dict(tickets[0])
 
