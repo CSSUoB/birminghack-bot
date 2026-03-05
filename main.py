@@ -26,7 +26,7 @@ account_slug: Final[str] = config["tito"]["account-slug"]
 event_slug: Final[str] = config["tito"]["event-slug"]
 question_slug: Final[str] = config["tito"]["question-slug"]
 api_endpoint: Final[str] = (
-    f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers"
+    f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers?page[size]=1000"
 )
 
 
