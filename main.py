@@ -4,7 +4,7 @@ from yaml import safe_load
 import sys
 import aiohttp
 from discord.ui import View
-from typing import Final, Optional
+from typing import Final, Optional, TypedDict
 from discord_logging.handler import DiscordHandler
 
 
@@ -15,9 +15,6 @@ logger.setLevel(logging.INFO)
 bot = discord.Bot(intents=discord.Intents.all())  # type: ignore[no-untyped-call]
 
 
-ticket_cache: list[dict[str, str]] = []
-
-
 with open("config.yaml", "r") as config_file:
     config = safe_load(config_file)
 
@@ -25,19 +22,33 @@ with open("config.yaml", "r") as config_file:
 account_slug: Final[str] = config["tito"]["account-slug"]
 event_slug: Final[str] = config["tito"]["event-slug"]
 question_slug: Final[str] = config["tito"]["question-slug"]
-api_endpoint: Final[str] = (
-    f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers?page[size]=1000"
+answers_endpoint: Final[str] = (
+    f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers?page[size]=1000&expand=ticket"
 )
 
+releases_endpoint: Final[str] = f"https://api.tito.io/v3/{account_slug}/{event_slug}/releases?version=3.1"
 
-def check_cache_for_discord_tag(discordtag: str) -> Optional[dict[str, str]]:
-    for ticket in ticket_cache:
-        if ticket["response"].strip().lower() == discordtag.strip().lower():
-            return dict(ticket)
+
+class Ticket(TypedDict):
+    ticket_reference: str
+    ticket_name: str
+    discord_username_response: str
+    release_name: str
+
+
+answer_cache: list[Ticket] = []
+releases_cache: dict[int, str] = {}
+
+
+def check_cache_for_discord_tag(discordtag: str) -> Optional[Ticket]:
+    for ticket in answer_cache:
+        if ticket["discord_username_response"].strip().lower() == discordtag.strip().lower():
+            return ticket
     return None
 
 
 async def fetch_tickets_from_api() -> None:
+    await fetch_releases_from_api()
     async with (
         aiohttp.ClientSession(
             headers={
@@ -45,21 +56,43 @@ async def fetch_tickets_from_api() -> None:
                 "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
             },
         ) as http_session,
-        http_session.get(api_endpoint) as response,
+        http_session.get(answers_endpoint) as response,
     ):
         data = await response.json()
-        ticket_cache.clear()
-        ticket_cache.extend(data["answers"])
+        answer_cache.clear()
+        answer_cache.extend(
+            {
+                "ticket_reference": answer["ticket"]["reference"],
+                "ticket_name": answer["ticket"]["first_name"],
+                "discord_username_response": answer["response"],
+                "release_name": releases_cache[answer["ticket"]["release_id"]],
+            } for answer in data["answers"]
+        )
 
 
-async def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
+async def fetch_releases_from_api() -> None:
+    async with (
+        aiohttp.ClientSession(
+            headers={
+                "Authorization": f"Token token={config['tito']['token']}",
+                "User-Agent": "birmingBot (contact email css@guild.bham.ac.uk)",
+            },
+        ) as http_session,
+        http_session.get(releases_endpoint) as response,
+    ):
+        data = await response.json()
+        releases_cache.clear()
+        releases_cache.update({release["id"]: release["title"] for release in data["releases"]})
+
+
+async def get_ticket_from_discord_tag(discordtag: str) -> Optional[Ticket]:
     if cached_ticket := check_cache_for_discord_tag(discordtag):
         logger.debug("Cache hit for Discord tag %s", discordtag)
         return cached_ticket
 
     await fetch_tickets_from_api()
 
-    ticket: dict[str, str] | None = check_cache_for_discord_tag(discordtag)
+    ticket: Ticket | None = check_cache_for_discord_tag(discordtag)
 
     if not ticket:
         logger.warning("No ticket found for Discord tag %s", discordtag)
@@ -67,7 +100,7 @@ async def get_ticket_from_discord_tag(discordtag: str) -> dict[str, str] | None:
 
     logger.debug("Ticket found for Discord tag %s: %s", discordtag, ticket)
 
-    return dict(ticket)
+    return ticket
 
 
 class VerifyView(View):
@@ -90,10 +123,9 @@ class VerifyView(View):
 
         guild: discord.Guild = await bot.fetch_guild(config["guild-id"])
         member: discord.Member = await guild.fetch_member(user_id)
-        role_id: int = int(config["role-id"])
 
-        if member.get_role(role_id) is not None:
-            logger.debug("User %s already has role %d", discord_username, role_id)
+        if len(member.roles) > 1:
+            logger.debug("User %s already has multiple roles.", discord_username)
             await interaction.followup.send(
                 embed=discord.Embed(
                     description="You have already been verified!",
@@ -103,23 +135,7 @@ class VerifyView(View):
             )
             return
 
-        role: discord.Role | None = guild.get_role(role_id)
-
-        if not role:
-            logger.info(
-                f"Role with ID {role_id} not found in guild {guild.id} while trying to verify {discord_username}"
-            )
-            logger.debug(f"Guild roles: {guild.roles}")
-            await interaction.followup.send(
-                embed=discord.Embed(
-                    description="Verification role not found. Please contact an organiser.",
-                    color=discord.Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
-
-        ticket: dict[str, str] | None = await get_ticket_from_discord_tag(
+        ticket: Ticket | None = await get_ticket_from_discord_tag(
             discordtag=discord_username
         )
 
@@ -138,11 +154,24 @@ class VerifyView(View):
             )
             return
 
-        first_name: str = ticket["ticket_name"].split(" ")[0]
+        first_name: str = ticket["ticket_name"]
         ref: str = ticket["ticket_reference"]
 
+        ticket_role: discord.Role | None = discord.utils.get(guild.roles, name=ticket["release_name"])
+
+        if not ticket_role:
+            logger.warning("Failed to find a discord role with name %s for user %s (%d)", ticket["release_name"], discord_username, user_id)
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description="Sorry, we were unable to verify your registration because we couldn't find the appropriate role to assign you. Please let an organiser know.",
+                    color=discord.Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         try:
-            await member.add_roles(role)
+            await member.add_roles(ticket_role)
         except discord.Forbidden:
             logger.error(
                 f"Failed to assign role to user {discord_username} ({user_id}) due to insufficient permissions"
