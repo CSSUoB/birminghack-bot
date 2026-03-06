@@ -232,6 +232,46 @@ async def send_verification_button(ctx: discord.ApplicationContext) -> None:  # 
     await ctx.respond(f"Message sent to {channel.mention}", ephemeral=True)
 
 
+@bot.slash_command(
+    name="check-all-users",
+    description="Checks all users in the guild against the ticket database and grants roles as needed.",
+)  # type: ignore[misc, no-untyped-call]
+async def check_all_users(ctx: discord.ApplicationContext) -> None:  # type: ignore[misc]
+    await ctx.defer(ephemeral=True)
+
+    if not ctx.guild:
+        return
+    
+    guild: discord.Guild = ctx.guild
+
+    await fetch_tickets_from_api()
+
+    for member in guild.members:
+        if member.bot:
+            continue
+
+        ticket: Ticket | None = await get_ticket_from_discord_tag(member.name)
+
+        if not ticket:
+            continue
+
+        ticket_role: discord.Role | None = discord.utils.get(guild.roles, name=ticket["release_name"])
+
+        if not ticket_role or ticket_role in member.roles:
+            continue
+
+        try:
+            await member.add_roles(ticket_role)
+            await member.edit(nick=ticket["ticket_name"])
+        except discord.Forbidden:
+            logger.error(
+                f"Failed to assign role to user {member.name} ({member.id}) due to insufficient permissions"
+            )
+            continue
+
+        await ctx.followup.send("Finished checking all users.")
+
+
 if __name__ == "__main__":
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.DEBUG)
