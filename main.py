@@ -286,7 +286,7 @@ async def check_all_users(ctx: discord.ApplicationContext) -> None:  # type: ign
             )
             continue
 
-        await ctx.followup.send("Finished checking all users.")
+    await ctx.followup.send("Finished checking all users.")
 
 
 if __name__ == "__main__":
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     logger.addHandler(handler)
 
     discord_logging_handler: logging.Handler = DiscordHandler(
-        service_name="biringBot",
+        service_name="birmingBot",
         webhook_url=config["discord-log-channel-webhook"],
     )
 
