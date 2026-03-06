@@ -26,7 +26,9 @@ answers_endpoint: Final[str] = (
     f"https://api.tito.io/v3/{account_slug}/{event_slug}/questions/{question_slug}/answers?page[size]=1000&expand=ticket"
 )
 
-releases_endpoint: Final[str] = f"https://api.tito.io/v3/{account_slug}/{event_slug}/releases?version=3.1"
+releases_endpoint: Final[str] = (
+    f"https://api.tito.io/v3/{account_slug}/{event_slug}/releases?version=3.1"
+)
 
 
 class Ticket(TypedDict):
@@ -42,7 +44,10 @@ releases_cache: dict[int, str] = {}
 
 def check_cache_for_discord_tag(discordtag: str) -> Optional[Ticket]:
     for ticket in answer_cache:
-        if ticket["discord_username_response"].strip().lower() == discordtag.strip().lower():
+        if (
+            ticket["discord_username_response"].strip().lower()
+            == discordtag.strip().lower()
+        ):
             return ticket
     return None
 
@@ -66,7 +71,8 @@ async def fetch_tickets_from_api() -> None:
                 "ticket_name": answer["ticket"]["first_name"],
                 "discord_username_response": answer["response"],
                 "release_name": releases_cache[answer["ticket"]["release_id"]],
-            } for answer in data["answers"]
+            }
+            for answer in data["answers"]
         )
 
 
@@ -82,7 +88,9 @@ async def fetch_releases_from_api() -> None:
     ):
         data = await response.json()
         releases_cache.clear()
-        releases_cache.update({release["id"]: release["title"] for release in data["releases"]})
+        releases_cache.update(
+            {release["id"]: release["title"] for release in data["releases"]}
+        )
 
 
 async def get_ticket_from_discord_tag(discordtag: str) -> Optional[Ticket]:
@@ -157,10 +165,17 @@ class VerifyView(View):
         first_name: str = ticket["ticket_name"]
         ref: str = ticket["ticket_reference"]
 
-        ticket_role: discord.Role | None = discord.utils.get(guild.roles, name=ticket["release_name"])
+        ticket_role: discord.Role | None = discord.utils.get(
+            guild.roles, name=ticket["release_name"]
+        )
 
         if not ticket_role:
-            logger.warning("Failed to find a discord role with name %s for user %s (%d)", ticket["release_name"], discord_username, user_id)
+            logger.warning(
+                "Failed to find a discord role with name %s for user %s (%d)",
+                ticket["release_name"],
+                discord_username,
+                user_id,
+            )
             await interaction.followup.send(
                 embed=discord.Embed(
                     description="Sorry, we were unable to verify your registration because we couldn't find the appropriate role to assign you. Please let an organiser know.",
@@ -241,7 +256,7 @@ async def check_all_users(ctx: discord.ApplicationContext) -> None:  # type: ign
 
     if not ctx.guild:
         return
-    
+
     guild: discord.Guild = ctx.guild
 
     await fetch_tickets_from_api()
@@ -255,7 +270,9 @@ async def check_all_users(ctx: discord.ApplicationContext) -> None:  # type: ign
         if not ticket:
             continue
 
-        ticket_role: discord.Role | None = discord.utils.get(guild.roles, name=ticket["release_name"])
+        ticket_role: discord.Role | None = discord.utils.get(
+            guild.roles, name=ticket["release_name"]
+        )
 
         if not ticket_role or ticket_role in member.roles:
             continue
