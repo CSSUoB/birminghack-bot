@@ -110,6 +110,50 @@ async def get_ticket_from_discord_tag(discordtag: str) -> Optional[Ticket]:
 
     return ticket
 
+async def assign_ticket_role_and_nick(member: discord.Member, ticket: Ticket) -> bool:
+    """Applies the appropriate role and nickname for a verified user."""
+    guild: discord.Guild = member.guild
+    ticket_role: discord.Role | None = discord.utils.get(
+        guild.roles, name=ticket["release_name"]
+    )
+
+    if not ticket_role:
+        logger.warning(
+            "Failed to find a discord role with name %s for user %s (%d)",
+            ticket["release_name"],
+            member.name,
+            member.id,
+        )
+        return False
+
+    try:
+        await member.add_roles(ticket_role)
+    except discord.Forbidden:
+        logger.error(
+            "Failed to assign role to user %s (%d) due to insufficient permissions",
+            member.name, 
+            member.id
+        )
+        return False
+
+    logger.info(
+        "Discord account %s (%d) successfully verified with ticket %s", 
+        member.name, 
+        member.id, 
+        ticket["ticket_reference"]
+    )
+
+    try:
+        await member.edit(nick=ticket["ticket_name"])
+    except discord.Forbidden:
+        logger.error(
+            "Failed to update nickname for user %s (%d) due to insufficient permissions",
+            member.name, 
+            member.id
+        )
+
+    return True
+
 
 class VerifyView(View):
     def __init__(self) -> None:
@@ -155,70 +199,32 @@ class VerifyView(View):
             )
             await interaction.followup.send(
                 embed=discord.Embed(
-                    description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket. You can update your responses by following the link that was sent to your email after registering, or by retrieving it on [lookup.tito.io](https://lookup.tito.io).\n\nIf you believe this is an error, please let an organiser know.",
+                    description="Sorry, we were unable to verify your registration. Please make sure you have answered the Discord username question in your ticket...",
                     color=discord.Colour.red(),
                 ),
                 ephemeral=True,
             )
             return
 
-        first_name: str = ticket["ticket_name"]
-        ref: str = ticket["ticket_reference"]
+        success = await assign_ticket_role_and_nick(member, ticket)
 
-        ticket_role: discord.Role | None = discord.utils.get(
-            guild.roles, name=ticket["release_name"]
-        )
-
-        if not ticket_role:
-            logger.warning(
-                "Failed to find a discord role with name %s for user %s (%d)",
-                ticket["release_name"],
-                discord_username,
-                user_id,
-            )
+        if not success:
             await interaction.followup.send(
                 embed=discord.Embed(
-                    description="Sorry, we were unable to verify your registration because we couldn't find the appropriate role to assign you. Please let an organiser know.",
+                    description="Sorry, we were unable to verify your registration due to a server error. Please let an organiser know.",
                     color=discord.Colour.red(),
                 ),
                 ephemeral=True,
             )
             return
-
-        try:
-            await member.add_roles(ticket_role)
-        except discord.Forbidden:
-            logger.error(
-                f"Failed to assign role to user {discord_username} ({user_id}) due to insufficient permissions"
-            )
-            await interaction.followup.send(
-                embed=discord.Embed(
-                    description="Sorry, we were unable to assign you the verified role. Please let an organiser know.",
-                    color=discord.Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
-
-        logger.info(
-            f"Discord account {discord_username} ({user_id}) linked to ticket {ref}"
-        )
-
-        try:
-            await member.edit(nick=first_name)
-        except discord.Forbidden:
-            logger.error(
-                f"Failed to update nickname for user {discord_username} ({user_id}) due to insufficient permissions"
-            )
 
         await interaction.followup.send(
             embed=discord.Embed(
-                description=f"**Welcome {first_name}, you have been successfully verified!** You can now view the other channels in the server - we recommend introducing yourself to everybody else in the introductions channel.\n\nWe encourage everybody to use their real name as their nickname, so your nickname has been automatically updated to your first name. However, if you are not comfortable with this, or simply want to use a different name, then feel free to update it to something else.",
+                description=f"**Welcome {ticket['ticket_name']}, you have been successfully verified!** You can now view the other channels in the server...",
                 color=discord.Colour.green(),
             ),
             ephemeral=True,
         )
-        return
 
 
 @bot.event
@@ -257,36 +263,42 @@ async def check_all_users(ctx: discord.ApplicationContext) -> None:  # type: ign
     if not ctx.guild:
         return
 
-    guild: discord.Guild = ctx.guild
-
     await fetch_tickets_from_api()
 
-    for member in guild.members:
-        if member.bot:
+    for member in ctx.guild.members:
+        if member.bot or len(member.roles) > 1:
             continue
 
         ticket: Ticket | None = await get_ticket_from_discord_tag(member.name)
-
-        if not ticket:
-            continue
-
-        ticket_role: discord.Role | None = discord.utils.get(
-            guild.roles, name=ticket["release_name"]
-        )
-
-        if not ticket_role or ticket_role in member.roles:
-            continue
-
-        try:
-            await member.add_roles(ticket_role)
-            await member.edit(nick=ticket["ticket_name"])
-        except discord.Forbidden:
-            logger.error(
-                f"Failed to assign role to user {member.name} ({member.id}) due to insufficient permissions"
-            )
-            continue
+        if ticket:
+            # --- USE THE HELPER HERE ---
+            await assign_ticket_role_and_nick(member, ticket)
 
     await ctx.followup.send("Finished checking all users.")
+
+
+@bot.event
+async def on_member_join(member: discord.Member) -> None:
+    if member.bot:
+        return
+
+    logger.info("User %s joined the server, attempting auto-verification.", member.name)
+
+    ticket: Ticket | None = await get_ticket_from_discord_tag(discordtag=member.name)
+
+    if ticket:
+        success: bool = await assign_ticket_role_and_nick(member, ticket)
+        if success:
+            try:
+                await member.send(
+                    f"**Welcome to the server, {ticket['ticket_name']}!**\n\n"
+                    "We found your ticket and have automatically verified you. "
+                    "Your nickname has been updated and you now have access to the server channels."
+                )
+            except discord.Forbidden:
+                pass # User has DMs disabled
+    else:
+        logger.info("Auto-verification skipped: No ticket found for newly joined user %s.", member.name)
 
 
 if __name__ == "__main__":
